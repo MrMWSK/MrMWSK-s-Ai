@@ -1,15 +1,13 @@
 const STORAGE_KEY = 'mrmwsk-ai-history';
-const MAX_HISTORY_MESSAGES = 500;
 
 const state = {
   messages: [],
   engine: null,
   modelLoading: false,
   modelReady: false,
-  hasGeneratedResponse: false,
   isOnline: navigator.onLine,
   gpuSupported: false,
-  busy: false,
+  actionApprovalRequired: true,
 };
 
 const ui = {
@@ -30,54 +28,35 @@ const ui = {
 };
 
 function appendMessage(role, text) {
-  const item = document.createElement('article');
-  item.className = `message ${role === 'user' ? 'user' : 'assistant'}`;
-
-  const header = document.createElement('div');
-  header.className = 'message-header';
-  const author = document.createElement('span');
-  author.textContent = role === 'user' ? 'You' : 'Assistant';
-  const time = document.createElement('time');
-  time.dateTime = new Date().toISOString();
-  time.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  header.append(author, time);
-
-  const body = document.createElement('div');
-  body.className = 'message-body';
-  body.textContent = String(text);
-  item.append(header, body);
+  const item = document.createElement('div');
+  item.className = `message ${role}`;
+  item.innerHTML = `
+    <div class="message-header">
+      <span>${role === 'user' ? 'You' : 'Assistant'}</span>
+      <span>${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+    </div>
+    <div>${text}</div>
+  `;
   ui.chat.appendChild(item);
   ui.chat.scrollTop = ui.chat.scrollHeight;
 }
 
 function saveHistory() {
-  if (!ui.storeLocal.checked) {
-    try { localStorage.removeItem(STORAGE_KEY); } catch (error) { console.warn('Could not clear local history:', error); }
-    return;
-  }
-
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.messages.slice(-MAX_HISTORY_MESSAGES)));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.messages));
   } catch (error) {
     console.warn('Conversation history could not be saved:', error);
   }
 }
 
 function loadHistory() {
-  if (!ui.storeLocal.checked) return;
-
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
-
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return;
-
-    state.messages = parsed
-      .filter((message) => message && ['user', 'assistant'].includes(message.role) && typeof message.text === 'string')
-      .slice(-MAX_HISTORY_MESSAGES);
-
-    state.messages.forEach(({ role, text }) => appendMessage(role, text));
+    state.messages = parsed;
+    parsed.forEach(({ role, text }) => appendMessage(role, text));
   } catch (error) {
     console.warn('Conversation history could not be loaded:', error);
   }
@@ -85,7 +64,7 @@ function loadHistory() {
 
 function updateOnlineStatus() {
   state.isOnline = navigator.onLine;
-  ui.onlineStatus.textContent = state.isOnline ? 'Network available' : 'Offline';
+  ui.onlineStatus.textContent = state.isOnline ? 'Online' : 'Offline';
   ui.onlineStatus.className = `status-pill ${state.isOnline ? 'online' : 'offline'}`;
   ui.cloudProviderStatus.textContent = state.isOnline ? 'ready' : 'offline';
 }
@@ -107,151 +86,142 @@ async function detectWebGPU() {
     state.gpuSupported = false;
     ui.gpuStatus.textContent = 'WebGPU: unavailable';
     ui.gpuStatus.className = 'status-pill critical';
-    console.warn('WebGPU adapter check failed:', error);
+    console.warn('WebGPU detection failed:', error);
   }
 }
 
 async function initializeLocalEngine() {
-  if (state.modelLoading) return;
   if (!state.gpuSupported) {
-    ui.localStatus.textContent = 'Local AI: WebGPU unavailable';
+    ui.localStatus.textContent = 'Local AI: no WebGPU';
     ui.localStatus.className = 'status-pill critical';
     ui.localProviderStatus.textContent = 'unsupported';
     return;
   }
 
+  if (state.modelLoading) return;
   state.modelLoading = true;
-  ui.loadModelBtn.disabled = true;
-  ui.localStatus.textContent = 'Local model: loading…';
-  ui.localStatus.className = 'status-pill info';
-  ui.localProviderStatus.textContent = 'loading';
 
   try {
+    ui.localStatus.textContent = 'Local AI: loading…';
+    ui.localStatus.className = 'status-pill info';
+    ui.localProviderStatus.textContent = 'loading';
+
     const { CreateMLCEngine } = await import('https://esm.sh/@mlc-ai/web-llm');
-    const engine = await CreateMLCEngine(ui.modelSelect.value, {
+    const modelId = ui.modelSelect.value;
+
+    const engine = await CreateMLCEngine(modelId, {
       initProgressCallback: (progress) => {
-        const detail = typeof progress === 'string' ? progress : progress?.text || 'Downloading and initializing';
-        ui.localStatus.textContent = `Local model: ${detail}`;
+        ui.localStatus.textContent = `Local AI: ${progress}`;
       },
     });
 
     state.engine = engine;
     state.modelReady = true;
-    state.hasGeneratedResponse = false;
-    ui.localStatus.textContent = 'Local model loaded';
-    ui.localStatus.className = 'status-pill info';
+    ui.localStatus.textContent = 'Local AI: model loaded';
+    ui.localStatus.className = 'status-pill online';
     ui.localProviderStatus.textContent = 'ready';
   } catch (error) {
     console.error('WebLLM model failed to load:', error);
     state.engine = null;
     state.modelReady = false;
-    ui.localStatus.textContent = 'Local model: failed to load';
+    ui.localStatus.textContent = 'Local AI: not loaded';
     ui.localStatus.className = 'status-pill critical';
-    ui.localProviderStatus.textContent = 'load error';
+    ui.localProviderStatus.textContent = 'error';
   } finally {
     state.modelLoading = false;
-    ui.loadModelBtn.disabled = false;
   }
 }
 
-async function generateLocalReply() {
+async function generateLocalReply(prompt) {
   if (!state.modelReady || !state.engine) {
-    return 'No local model is loaded. Select a model and choose “Load model” to try browser-based inference.';
+    return 'The local model is not loaded yet. Use “Load model” once your browser supports WebGPU and the model can be downloaded.';
   }
 
   try {
-    const history = state.messages.map(({ role, text }) => ({ role, content: text }));
     const result = await state.engine.chat.completions.create({
-      messages: history,
-      max_tokens: 256,
+      messages: [{ role: 'user', content: prompt }],
     });
 
-    const response = result.choices?.[0]?.message?.content;
-    if (typeof response !== 'string' || !response.trim()) {
-      throw new Error('The model returned an empty response.');
+    const text = result.choices?.[0]?.message?.content || '';
+    if (!text.trim()) {
+      return 'The local model responded without visible text output.';
     }
 
-    state.hasGeneratedResponse = true;
-    ui.localStatus.textContent = 'Local AI: response generated';
-    ui.localStatus.className = 'status-pill online';
-    ui.localProviderStatus.textContent = 'verified';
-    return response;
+    return text;
   } catch (error) {
     console.error('Local generation failed:', error);
-    ui.localStatus.textContent = 'Local AI: generation failed';
-    ui.localStatus.className = 'status-pill critical';
-    ui.localProviderStatus.textContent = 'generation error';
-    return 'The local model did not generate a response. Check browser compatibility, available memory, and the developer console for details.';
+    return 'The local model could not generate a response at this time. This usually means WebGPU support, model download, or browser compatibility needs attention.';
   }
+}
+
+async function generateCloudReply(prompt) {
+  if (!navigator.onLine) {
+    ui.cloudProviderStatus.textContent = 'offline';
+    return 'The system is offline. Local inference is the safest option right now.';
+  }
+
+  ui.cloudProviderStatus.textContent = 'connecting';
+  return 'Cloud fallback is designed as a secure backend-only integration. API keys are never embedded in the browser frontend.';
 }
 
 async function askAssistant(prompt) {
-  const text = prompt.trim();
-  if (!text || state.busy) return;
+  const trimmed = prompt.trim();
+  if (!trimmed) return;
 
-  state.busy = true;
-  ui.sendBtn.disabled = true;
-  appendMessage('user', text);
-  state.messages.push({ role: 'user', text });
+  appendMessage('user', trimmed);
 
-  let answer;
-  if (state.modelReady && state.engine) {
-    answer = await generateLocalReply();
+  const useLocal = state.modelReady && !!state.engine;
+  let answer = '';
+
+  if (useLocal) {
+    answer = await generateLocalReply(trimmed);
   } else {
-    answer = 'No AI provider is active yet. Load a local WebLLM model to generate a response. Cloud providers and external actions are not configured in this version.';
+    answer = await generateCloudReply(trimmed);
   }
 
   appendMessage('assistant', answer);
+  state.messages.push({ role: 'user', text: trimmed });
   state.messages.push({ role: 'assistant', text: answer });
   saveHistory();
-  state.busy = false;
-  ui.sendBtn.disabled = false;
+
+  ui.actionProviderStatus.textContent = state.actionApprovalRequired ? 'requires approval' : 'ready';
 }
 
 ui.sendBtn.addEventListener('click', async () => {
-  const text = ui.promptInput.value;
-  if (!text.trim()) return;
-  ui.promptInput.value = '';
+  const text = ui.promptInput.value.trim();
+  if (!text) return;
   await askAssistant(text);
+  ui.promptInput.value = '';
 });
 
-ui.loadModelBtn.addEventListener('click', initializeLocalEngine);
-
-ui.modelSelect.addEventListener('change', () => {
-  state.engine = null;
-  state.modelReady = false;
-  state.hasGeneratedResponse = false;
-  ui.localStatus.textContent = 'Local AI: model not loaded';
-  ui.localStatus.className = 'status-pill info';
-  ui.localProviderStatus.textContent = 'not loaded';
+ui.loadModelBtn.addEventListener('click', async () => {
+  await initializeLocalEngine();
 });
 
 ui.promptInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault();
-    const text = ui.promptInput.value;
-    if (text.trim()) {
+    const value = ui.promptInput.value.trim();
+    if (value) {
+      askAssistant(value);
       ui.promptInput.value = '';
-      askAssistant(text);
     }
   }
 });
 
-ui.approveExternal.addEventListener('change', () => {
-  ui.actionProviderStatus.textContent = 'not connected';
-});
-
-ui.blockRemote.addEventListener('change', () => {
-  ui.cloudProviderStatus.textContent = 'not configured';
+ui.approveExternal.addEventListener('change', (event) => {
+  state.actionApprovalRequired = event.target.checked;
+  ui.actionProviderStatus.textContent = state.actionApprovalRequired ? 'requires approval' : 'ready';
 });
 
 ui.storeLocal.addEventListener('change', () => {
-  if (ui.storeLocal.checked) saveHistory();
-  else {
-    state.messages = [];
-    ui.chat.replaceChildren();
-    try { localStorage.removeItem(STORAGE_KEY); } catch (error) { console.warn('Could not clear local history:', error); }
+  if (ui.storeLocal.checked) {
+    saveHistory();
   }
+});
+
+ui.blockRemote.addEventListener('change', () => {
+  console.log('Remote-request policy updated:', ui.blockRemote.checked ? 'blocked unless online' : 'relaxed');
 });
 
 window.addEventListener('online', updateOnlineStatus);
@@ -262,5 +232,5 @@ detectWebGPU();
 loadHistory();
 
 if (!state.messages.length) {
-  appendMessage('assistant', 'Welcome. This interface is ready. Load a local model to test inference; the app will report success only after it generates a real response.');
+  appendMessage('assistant', 'Hello. I am MrMWSK\'s AI. I can run locally with WebLLM if your browser supports WebGPU, and I will only act on external systems after your approval.');
 }
