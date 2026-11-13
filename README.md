@@ -1,56 +1,44 @@
-# MrMWSK-s-Ai
+# MrMWSK's AI — Offline PWA
 
-A powerful private AI assistant with offline intelligence, internet access and expandable integrations.
+A branded, installable Progressive Web App using **MLC WebLLM** for real on-device language-model inference.
 
-## Repository layout
+## What works
+- Real local AI chat through WebLLM/WebGPU (not a simulated response).
+- Compact Qwen2 0.5B model selected as a starting point.
+- Local text/Markdown/CSV/JSON file reading; file contents are added to AI context when chatting.
+- Local chat history, export, clear, and privacy controls.
+- Installable PWA with an offline app shell/service worker.
 
-- `index.html` — main AI app shell and premium chat interface
-- `assets/app.css` — responsive visual design for the app
-- `assets/app.js` — local state, WebGPU detection, WebLLM integration, local storage, and privacy controls
+## Important offline behavior
+This is an **offline-capable** app, not an app with the model preloaded in this ZIP. On first launch, while online, the browser downloads the WebLLM runtime and model weights. Model download can be large and needs free storage. Once the app assets and model have finished caching, chat inference runs on-device without sending prompts to a cloud AI service. Keep the app installed and do not clear browser site data/model cache.
 
-## First setup
+Requires a WebGPU-compatible browser/device. The 0.5B model is a small starting model and answer quality is limited compared with larger models. Many phones may not have enough GPU memory or WebGPU support. If WebGPU is unavailable, this browser build cannot run the model.
 
-1. Open a terminal in the project folder.
-2. Start a local web server from the repo root:
+## Run locally
+Install Node.js 20+ then:
 
 ```bash
-cd /path/to/MrMWSK-s-Ai
-python -m http.server 8000
+npm install
+npm run dev
 ```
 
-3. Open the app in a modern browser:
+Open the local URL shown by Vite. For production:
 
-```text
-http://localhost:8000/
+```bash
+npm run build
+npm run preview
 ```
 
-## Browser requirements
+Deploy the contents of `dist/` to an HTTPS static host (GitHub Pages, Cloudflare Pages, Netlify, etc.). HTTPS is required for service workers/PWA installation and WebGPU secure-context access. After opening the deployed app online once, install it from Chrome's menu: **Install app** or **Add to Home screen**.
 
-- Best performance on the latest Chrome or Edge build on Windows, macOS, or Android.
-- WebGPU must be enabled for local model execution.
-- If WebGPU is missing or unsupported, the app stays in a safe offline state instead of falsely claiming a model is running.
+## Model and source
+The WebLLM package is `@mlc-ai/web-llm` version 0.2.88. The supplied `v0.2.88 source code.zip` is the upstream MLC WebLLM source distribution; it is not itself a ready-to-run mobile app. The app uses the published package through npm. WebLLM and its runtime/model assets are subject to their respective upstream licenses and model licenses. Check model terms before redistribution.
 
-## Local AI status
+## Privacy
+Prompts and completions are processed locally by WebLLM once the model is loaded. The first app/runtime/model downloads require internet. Browser storage is controlled by the user and can be cleared by the browser. This app has no account system, analytics, or server-side chat endpoint.
 
-This app does not claim local AI works until the browser actually loads a model and generates a response.
-
-- The app checks `navigator.gpu` before trying to initialize WebLLM.
-- If WebGPU is unsupported, the UI shows a clear warning.
-- If the model does not load, the app shows an error state rather than pretending the assistant is ready.
-
-## Privacy and secure integration rules
-
-- No API keys are stored in the frontend.
-- External actions require explicit user approval.
-- Local conversation history is stored in `localStorage` only.
-- Remote provider access should be routed through a secure backend or proxy, not embedded in browser code.
-
-## Offline-first architecture
-
-- Local inference is the priority path.
-- Online provider fallback is available only when the browser is online.
-- The app keeps clear status labels for online/offline, local AI readiness, and WebGPU capability.
-
-## Notes
-
-This is the first working interface for MrMWSK's AI. It is intentionally conservative: if a model cannot load, the UI explains the issue instead of claiming success.
+## Project layout
+- `src/main.js` — application UI and WebLLM integration
+- `src/style.css` — MrMWSK's AI theme and responsive layout
+- `public/sw.js` — offline app-shell caching
+- `public/manifest.webmanifest` — installable PWA metadata

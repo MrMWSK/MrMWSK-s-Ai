@@ -1,0 +1,5 @@
+{
+ "name":"MrMWSK's AI","short_name":"MrMWSK AI","description":"Private offline AI workspace",
+ "start_url":"/","scope":"/","display":"standalone","background_color":"#0a100f","theme_color":"#0a100f",
+ "icons":[{"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}
