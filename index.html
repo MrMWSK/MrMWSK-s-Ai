@@ -11,26 +11,26 @@
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand-row">
-          <div class="brand-mark">M</div>
+          <div class="brand-mark" aria-hidden="true">M</div>
           <div class="brand-name">MrMWSK's AI</div>
         </div>
 
         <nav class="nav" aria-label="Primary navigation">
           <div class="nav-label">Workspace</div>
-          <button class="nav-item active" type="button">Chat</button>
-          <button class="nav-item" type="button">Agents</button>
-          <button class="nav-item" type="button">Connectors</button>
-          <button class="nav-item" type="button">Privacy</button>
+          <button class="nav-item active" type="button" aria-current="page">Chat</button>
+          <button class="nav-item" type="button" disabled title="Coming soon">Agents</button>
+          <button class="nav-item" type="button" disabled title="Coming soon">Connectors</button>
+          <button class="nav-item" type="button" disabled title="Coming soon">Privacy</button>
         </nav>
 
         <nav class="nav" aria-label="Local AI navigation">
           <div class="nav-label">Local AI</div>
-          <button class="nav-item" type="button">Run locally</button>
-          <button class="nav-item" type="button">Model library</button>
+          <button class="nav-item" type="button" disabled title="Use Load model to start">Run locally</button>
+          <button class="nav-item" type="button" disabled title="Coming soon">Model library</button>
         </nav>
 
         <div class="sidebar-card">
-          Privacy-first design: no API keys are kept in browser storage. Remote actions require explicit approval.
+          Your chat stays in this browser. No cloud provider or external connector is configured in this first version.
         </div>
       </aside>
 
@@ -42,18 +42,19 @@
           </div>
 
           <div class="status-row" aria-live="polite">
-            <div id="onlineStatus" class="status-pill online">Online</div>
-            <div id="localStatus" class="status-pill info">Local AI: checking</div>
+            <div id="onlineStatus" class="status-pill info">Checking connection…</div>
+            <div id="localStatus" class="status-pill info">Local AI: not loaded</div>
             <div id="gpuStatus" class="status-pill info">WebGPU: checking</div>
           </div>
         </header>
 
         <div class="workspace">
-          <section class="chat-panel">
-            <div id="chat" class="chat-scroll" aria-live="polite"></div>
+          <section class="chat-panel" aria-label="Conversation">
+            <div id="chat" class="chat-scroll" aria-live="polite" aria-relevant="additions"></div>
 
             <div class="composer">
-              <textarea id="promptInput" rows="3" placeholder="Ask anything…"></textarea>
+              <label class="visually-hidden" for="promptInput">Message</label>
+              <textarea id="promptInput" rows="3" placeholder="Ask anything…" autocomplete="off"></textarea>
               <div class="composer-actions">
                 <button id="sendBtn" class="primary-btn" type="button">Send</button>
                 <button id="loadModelBtn" class="secondary-btn" type="button">Load model</button>
@@ -61,32 +62,24 @@
             </div>
           </section>
 
-          <aside class="settings-panel">
+          <aside class="settings-panel" aria-label="Assistant settings">
             <div class="panel-card">
               <h2>Model selection</h2>
               <label for="modelSelect" class="field-label">Local model</label>
               <select id="modelSelect">
-                <option value="Qwen2.5-3B-Instruct-q4f32_1">Qwen 2.5 3B</option>
-                <option value="Llama-3.2-3B-Instruct-q4f32_1">Llama 3.2 3B</option>
-                <option value="Phi-3-mini-4k-instruct-q4f32_1">Phi-3 mini</option>
-                <option value="SmolLM2-360M-Instruct-q4f32_1">SmolLM2 360M</option>
+                <option value="Qwen2.5-3B-Instruct-q4f16_1-MLC">Qwen 2.5 3B · powerful</option>
+                <option value="Llama-3.2-3B-Instruct-q4f16_1-MLC">Llama 3.2 3B · powerful</option>
+                <option value="Phi-3-mini-4k-instruct-q4f16_1-MLC">Phi-3 mini</option>
+                <option value="SmolLM2-360M-Instruct-q4f32_1-MLC">SmolLM2 360M · smaller</option>
               </select>
+              <p class="helper-text">Model IDs are validated for WebLLM; the first load downloads weights and may use several GB of storage and memory.</p>
             </div>
 
             <div class="panel-card">
               <h2>AI provider mode</h2>
-              <div class="list-row">
-                <span>Local WebLLM</span>
-                <span id="localProviderStatus" class="muted-tag">idle</span>
-              </div>
-              <div class="list-row">
-                <span>Cloud fallback</span>
-                <span id="cloudProviderStatus" class="muted-tag">disabled</span>
-              </div>
-              <div class="list-row">
-                <span>External actions</span>
-                <span id="actionProviderStatus" class="muted-tag">blocked</span>
-              </div>
+              <div class="list-row"><span>Local WebLLM</span><span id="localProviderStatus" class="muted-tag">not loaded</span></div>
+              <div class="list-row"><span>Cloud provider</span><span id="cloudProviderStatus" class="muted-tag">not configured</span></div>
+              <div class="list-row"><span>External actions</span><span id="actionProviderStatus" class="muted-tag">not connected</span></div>
             </div>
 
             <div class="panel-card">
@@ -96,35 +89,27 @@
                 <input id="approveExternal" type="checkbox" checked />
               </label>
               <label class="toggle-row">
-                <span>Store conversations locally only</span>
+                <span>Store conversations locally</span>
                 <input id="storeLocal" type="checkbox" checked />
               </label>
               <label class="toggle-row">
                 <span>Block remote requests unless online</span>
                 <input id="blockRemote" type="checkbox" checked />
               </label>
+              <p class="helper-text">Remote requests and external actions are disabled until a secure backend or connector is implemented.</p>
             </div>
 
             <div class="panel-card">
               <h2>Connector hub</h2>
-              <div class="list-row">
-                <span>Calendar</span>
-                <span class="muted-tag">ready</span>
-              </div>
-              <div class="list-row">
-                <span>Files</span>
-                <span class="muted-tag">ready</span>
-              </div>
-              <div class="list-row">
-                <span>Custom API</span>
-                <span class="muted-tag">ready</span>
-              </div>
+              <div class="list-row"><span>Calendar</span><span class="muted-tag">not connected</span></div>
+              <div class="list-row"><span>Files</span><span class="muted-tag">not connected</span></div>
+              <div class="list-row"><span>Custom API</span><span class="muted-tag">not connected</span></div>
             </div>
           </aside>
         </div>
       </main>
     </div>
 
-    <script src="assets/app.js"></script>
+    <script src="assets/app.js" defer></script>
   </body>
 </html>
